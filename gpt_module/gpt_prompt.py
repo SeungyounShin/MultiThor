@@ -61,7 +61,8 @@ class GPT4Agent(GPT4Query):
         self.add_message("user", user_input)
         self.response = openai.ChatCompletion.create(
             model=self.model,
-            messages=self.messages
+            messages=self.messages,
+            stop = ['###','\n']
         )
         response = self.get_response_content()
         act_type, content = self.parse_response(response)
