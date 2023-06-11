@@ -1,0 +1,40 @@
+RECEPTACLE_TYPE = [
+    'CounterTop', 'SinkBasin', 'Microwave', 'Fridge', 'Cabinet', 'Drawer','SideTable',
+    'ArmChair', 'Sofa', 'GarbageCan','HandTowelHolder', 'TowelHolder',
+    'BathtubBasin', 'Bed', 'Box', 'CoffeeMachine', 'CoffeeTable', 'Desk', 'DiningTable',
+    'Dresser', 'Shelf'
+]
+
+VISIBLE_OBJECT_EXCLUDE = [
+    'CounterTop', 'SinkBasin', 'Fridge', 'Cabinet', 'Drawer','SideTable',
+    'ArmChair', 'Sofa', 'GarbageCan','HandTowelHolder', 'TowelHolder',
+    'BathtubBasin', 'Bed', 'Box','CoffeeTable', 'Desk', 'DiningTable',
+    'Dresser', 'ShelvingUnit'
+]
+
+ACTION_PRIMITIVE = [
+    'goto', 'take', 'put' , 'open', 'close' ,  'toggle', 
+]
+
+ACTION_TEMPLATE = {
+    'goto': 'goto {recep}'
+}
+
+GPT4_SYSTEM_PROMPT = f"""You are an intelligent assistant capable of controlling multiple agents in an AI2Thor environment.
+The agents need to collaborate to solve tasks given in natural language instructions.
+Your role is to understand these instructions and guide the agents to complete the tasks.
+
+Action Primitives: {ACTION_PRIMITIVE}
+
+Example Demo:
+###Env: There are 2 agents in the scene. You are instructed to finish 'Make a coffee'
+You see cabinet1-9, coffeemachine1, countertop1-3, drawer1-8, fridge1, garbagecan1, microwave1, sink1.
+###Assistant:
+<think>I think (fill this to accomplish instruction) </think>
+###Env:
+Ok.
+###Assistant:
+<action>agent1 : goto countertop1, agent2 : goto coffeemachine1</action>
+...
+
+"""

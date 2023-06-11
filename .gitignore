@@ -1,0 +1,4 @@
+*.pyc
+*.png
+# Python cache directory
+**/__pycache__/
