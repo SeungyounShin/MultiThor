@@ -17,7 +17,8 @@ python gpt_play.py --scene FloorPlan1 --agentCount 2 --gridSize 0.25
 ```
 
 4. This will print : 
-```shell
+
+<font color="gray">**Obs**: </font>
 There are 2 agents in the scene. You are instructed to finish 'Put all utensil on the sink'.
 You see cabinet1-9, coffeemachine1, countertop1-3, drawer1-8, fridge1, garbagecan1, microwave1, sink1.
 
