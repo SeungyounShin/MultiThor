@@ -1,6 +1,6 @@
 ## Getting Started (GPT4 refer to gpt_play.py)
 
-![FullEnv](./misc/multithor_sys.png)
+![FullEnv](./misc/multithor_sys_bg.png)
 
 1. Clone the repository:
 
