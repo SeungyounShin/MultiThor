@@ -1,4 +1,5 @@
 *.pyc
 *.png
+!/misc/*.png
 # Python cache directory
 **/__pycache__/
