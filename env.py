@@ -511,6 +511,8 @@ class ThorMultiEnv():
         _actions_ = list()
         for agent_i in range(self.agent_num):
             act = actions[agent_i]
+            if act is None:
+                _actions_.append("IDLE")
             try:
                 opcode, operand = act.split(' ')[0], ' '.join(act.split(' ')[1:])
                 opcode = opcode.strip().lower()
