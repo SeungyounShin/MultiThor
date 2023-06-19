@@ -517,6 +517,7 @@ class ThorMultiEnv():
             act = actions[agent_i]
             if act is None:
                 _actions_.append("IDLE")
+                continue
             try:
                 opcode, operand = act.split(' ')[0], ' '.join(act.split(' ')[1:])
                 opcode = opcode.strip().lower()
@@ -562,14 +563,19 @@ class ThorMultiEnv():
         recep_node_mapping = dict()
         for recep_name in recep_names:
             # get recep pos
-            recep_id = self.recep_name2id[recep_name]
-            recep_pos = self.getObjMetabyId(recep_id)['position']
-            best_recep_closest_pos = self.best_recep_pose[recep_id]
+            if recep_name in self.recep_name2id:
+                recep_id = self.recep_name2id[recep_name]
+                recep_pos = self.getObjMetabyId(recep_id)['position']
+                best_recep_closest_pos = self.best_recep_pose[recep_id]
 
-            for node in self.G.nodes:
-                node_position = self.G.nodes[node]
-                if (node_position['x'] == best_recep_closest_pos['x']) and (node_position['z'] == best_recep_closest_pos['z']):
-                    recep_node_mapping[recep_name] = node
+                # mapping recep_node to recep_name
+                for node in self.G.nodes:
+                    node_position = self.G.nodes[node]
+                    if (node_position['x'] == best_recep_closest_pos['x']) and (node_position['z'] == best_recep_closest_pos['z']):
+                        recep_node_mapping[recep_name] = node
+
+            else: 
+                recep_node_mapping[recep_name] = None
 
         return recep_node_mapping
 
@@ -771,7 +777,7 @@ class ThorMultiEnv():
 
         # 1. parse actions 
         actions = self.parse_actions(actions)
-        
+
         # 2. preprocess actions to take 
         nav_agents, nav_recep_names = list(), list()
         interact_agents, interact_actions = list() , list()
@@ -787,6 +793,7 @@ class ThorMultiEnv():
                 #    reaction_str[agent_i] = f"{agent_i+1} has ongoing action {self.ongoing_actions[agent_i]}"
             ## check actions invalid
             if actions[agent_i] == 'Invalid Action':
+                print("!!!!!!! ",actions,agent_i )
                 reaction_str[agent_i] = f"{agent_i+1} commanded with Invalid Action."
             ## divide nav and interaction agents
             if actions[agent_i][0] =='goto':
@@ -812,19 +819,37 @@ class ThorMultiEnv():
         agent_nodes = self.match_agent_node(nav_agents)
         # (2) find recep node
         recep_nodes = self.match_recep_node(nav_recep_names)
+        nav_error_agent = [False]*len(agent_nodes)
         # some utils for nav (match agentId and recep_nodes)
         navAgent2node= dict()
-        for recep_name_i,nav_agent_i in zip(nav_recep_names,nav_agents):
+        for enum_i,(recep_name_i,nav_agent_i) in enumerate(zip(nav_recep_names,nav_agents)):
             # get recep node at Graph(G)
             node_num = recep_nodes[recep_name_i]
-            navAgent2node[nav_agent_i] = (node_num, recep_name_i)
+            if node_num is not None:
+                navAgent2node[nav_agent_i] = (node_num, recep_name_i)
+            else: 
+                reaction_str[nav_agent_i] = f'There is no receptacles named {recep_name_i}'
+                nav_error_agent[enum_i] = True
+                idle_agents.append(nav_agent_i)
+        
+        nav_agents = [agent for i, agent in enumerate(nav_agents) if not nav_error_agent[i]]
+
         # (3) MAPF (Multi-Agent Path Finding)
         min_nav_len, multiagent_path_solution = 0,0
         if len(agent_nodes) > 0:
             #print("Check 1 : ",self.G_dict, list(agent_nodes.values()), list(recep_nodes.values()))
-            min_nav_len,multiagent_path_solution = MAPF(self.G_dict,list(agent_nodes.values()),list(recep_nodes.values()))
+            # skip the errored nav agent
+            agent_nodes_list = list()
+            recep_nodes_list = list()
+            for enum_i,(k,v) in enumerate(recep_nodes.items()):
+                if v is not None: 
+                    agent_nodes_list.append(list(agent_nodes.values())[enum_i])
+                    recep_nodes_list.append(v)
+            if len(agent_nodes_list)>0:
+                min_nav_len,multiagent_path_solution = MAPF(self.G_dict,agent_nodes_list,recep_nodes_list)
         for ni,na in enumerate(nav_agents):
-            action_plan[na] = self.nav_plan_to_pair(multiagent_path_solution[ni])
+            if not nav_error_agent[ni]:
+                action_plan[na] = self.nav_plan_to_pair(multiagent_path_solution[ni])
         
         # interaction
         for interact_agent_i in list(interact_action_dict.keys()):
@@ -840,6 +865,9 @@ class ThorMultiEnv():
         else:
             action_min_len = len(min(action_plan.values(), key=len))
         agent_who_done = [False]*self.agent_num
+
+        for idle_agent_i in idle_agents:
+            agent_who_done[idle_agent_i] = True
 
         for i in range(action_min_len):
             for agent_id in range(self.agent_num):
@@ -898,6 +926,10 @@ class ThorMultiEnv():
                         if rtn_event.events[agent_id].metadata["lastActionSuccess"]:
                             # interaction success
                             reaction_str[agent_id] = self.interaction_obs_template(agent_id, interaction_action_tuple, rtn_event.metadata)
+                        else:
+                            full_iteraction_action_str = ' '.join(interaction_action_tuple)
+                            reaction_str[agent_id] = f'Agent{agent_id+1} failed to execute the operation "{full_iteraction_action_str}".'
+                            #reaction_str[agent_id] = f'agent{agent_id+1} failed to operate \'{full_iteraction_action_str}\''
                     agent_who_done[interact_agent_i] = True 
 
             # visualize
@@ -910,14 +942,17 @@ class ThorMultiEnv():
                 if (type(actions[i]) is not str) and (not actions[i] in ['Invalid Action','IDLE']):
                     self.ongoing_actions[i] = actions[i]
                 # ongoing action 
-                if (type(actions[i]) is tuple) and (actions[i][0] == 'goto'):
-                    #print(f'agent {i+1} heading to...')
-                    reaction_str[i] = f'agent{i+1} is heading to {self.ongoing_actions[i][-1]}'
-                # IDEL
-                if (type(actions[i]) is str) and (actions[i] == 'IDLE'):
-                    reaction_str[i] = f'agent{i+1} is not doing anything.'
+                if reaction_str[i] == '':
+                    if (type(actions[i]) is tuple) and (actions[i][0] == 'goto'):
+                        #print(f'agent {i+1} heading to...')
+                        reaction_str[i] = f'agent{i+1} is heading to {self.ongoing_actions[i][-1]}'
             else:
                 self.ongoing_actions[i] = None
+
+        # reaction for idle agent 
+        for agent_i in idle_agents:
+            if reaction_str[i] == '':
+                reaction_str[i] = f'agent{i+1} is not doing anything.'
 
         #time.sleep(3)
         obs_str = ''
@@ -1010,6 +1045,6 @@ if __name__=="__main__":
         act_str = f'agent1 : {act[0]} , agent2 : {act[1]}'
         env.step(act_str, to_print=True)'''
 
-    action_str = """agent1 : goto drawer2, agent2 : open drawer3"""
+    action_str = """agent2 : open drawer1"""
     env.step(action_str, to_print=True)
     time.sleep(5)

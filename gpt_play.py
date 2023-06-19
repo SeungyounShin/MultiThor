@@ -41,10 +41,11 @@ if __name__ == "__main__":
             obs = env.step(llm_agent.last_aciton)
 
         # print results
-        print('obs : ')
+        print('Observation : ')
         colorprint(obs, color='gray', font='bold')
 
         act_type,content =  llm_agent.act(obs)
+        print('Action : ')
         colorprint(llm_agent.getLastAction(), color='green', font='bold')
     
 

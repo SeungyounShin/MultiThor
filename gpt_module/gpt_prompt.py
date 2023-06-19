@@ -77,7 +77,7 @@ class GPT4Agent(GPT4Query):
         tags = re.findall(r'<(.*?)>', response)[:2]
         content = re.findall(r'<.*?>(.*?)</.*?>', response)
 
-        print(tags)
+        #print(tags)
         # delete duplicating agent
         if tags[0]=='action':
             content_split = [i.strip() for i in content[0].split(',')]
