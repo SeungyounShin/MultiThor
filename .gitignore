@@ -3,3 +3,4 @@
 !/misc/*.png
 # Python cache directory
 **/__pycache__/
+.DS_Store
