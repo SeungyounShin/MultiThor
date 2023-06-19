@@ -69,13 +69,33 @@ class GPT4Agent(GPT4Query):
         response_fmt = f'<{act_type}>{content}</{act_type}>'
         self.last_aciton = content
         self.add_message("assistant", response_fmt)  # save the assistant's response
+
         return act_type, content
 
-    def parse_response(self,response):
-        print(response)
+    def parse_response(self, response):
+        #print(response) # debug
         tags = re.findall(r'<(.*?)>', response)[:2]
         content = re.findall(r'<.*?>(.*?)</.*?>', response)
+
+        print(tags)
+        # delete duplicating agent
+        if tags[0]=='action':
+            content_split = [i.strip() for i in content[0].split(',')]
+            unique_commands = []
+            seen_agents = set()
+            for command in content_split:
+                parts = [i.strip() for i in command.split(':')]
+                if len(parts) == 2:
+                    agent, _ = parts
+                    if agent not in seen_agents:
+                        unique_commands.append(command)
+                        seen_agents.add(agent)
+            
+            content_fixed = ', '.join(unique_commands)
+            return tags[0], content_fixed
+    
         return tags[0], content[0]
+
     
     def getLastAction(self):
         return self.last_aciton

@@ -500,9 +500,13 @@ class ThorMultiEnv():
         actions = re.split(r"\n|,", actions)
         new_act = [None]*self.agent_num
         for ith,a in enumerate(actions):
-            agent, action_str = a.split(":")
-            num = int(re.findall(r'\d+', agent)[0])-1
-            new_act[num] = action_str.strip()
+            try:
+                agent, action_str = a.split(":")
+                num = int(re.findall(r'\d+', agent)[0])-1
+                new_act[num] = action_str.strip()
+            except:
+                new_act[num] = 'Invalide Action'
+
         actions = new_act
         
         #if type(actions) is not list:
@@ -636,7 +640,10 @@ class ThorMultiEnv():
                 obj = random.choice(gather_objId) # HARD-CODED
         # get recepId
         if recep is not None:
-            recep = self.recep_name2id[recep]
+            try:
+                recep = self.recep_name2id[recep]
+            except:
+                recep =None
 
         # perform action
         if action == 'take':
@@ -776,6 +783,8 @@ class ThorMultiEnv():
                 #print(f' ongoing ... {agent_i} {self.ongoing_actions[agent_i]}')
                 #reaction_str[agent_i] = f"{agent_i+1} has ongoing action {self.ongoing_actions[agent_i]}"
                 actions[agent_i] = self.ongoing_actions[agent_i]
+                #if self.actions[agent_i] is not None:
+                #    reaction_str[agent_i] = f"{agent_i+1} has ongoing action {self.ongoing_actions[agent_i]}"
             ## check actions invalid
             if actions[agent_i] == 'Invalid Action':
                 reaction_str[agent_i] = f"{agent_i+1} commanded with Invalid Action."
@@ -812,6 +821,7 @@ class ThorMultiEnv():
         # (3) MAPF (Multi-Agent Path Finding)
         min_nav_len, multiagent_path_solution = 0,0
         if len(agent_nodes) > 0:
+            #print("Check 1 : ",self.G_dict, list(agent_nodes.values()), list(recep_nodes.values()))
             min_nav_len,multiagent_path_solution = MAPF(self.G_dict,list(agent_nodes.values()),list(recep_nodes.values()))
         for ni,na in enumerate(nav_agents):
             action_plan[na] = self.nav_plan_to_pair(multiagent_path_solution[ni])
@@ -825,7 +835,10 @@ class ThorMultiEnv():
         #######################
         # get action_plan min
         # TODO : ongoing action keep
-        action_min_len = len(min(action_plan.values(), key=len))
+        if len(action_plan.values())==0:
+            action_min_len =1 
+        else:
+            action_min_len = len(min(action_plan.values(), key=len))
         agent_who_done = [False]*self.agent_num
 
         for i in range(action_min_len):
@@ -890,12 +903,19 @@ class ThorMultiEnv():
             # visualize
             self.top_down_view_show()
             self.show_egocentric()
- 
+
         # keep ongoing action for next step 
         for i in range(self.agent_num):
             if not agent_who_done[i]:
-                #print(f' {i} agent still not finished')
-                self.ongoing_actions[i] = actions[i]
+                if (type(actions[i]) is not str) and (not actions[i] in ['Invalid Action','IDLE']):
+                    self.ongoing_actions[i] = actions[i]
+                # ongoing action 
+                if (type(actions[i]) is tuple) and (actions[i][0] == 'goto'):
+                    #print(f'agent {i+1} heading to...')
+                    reaction_str[i] = f'agent{i+1} is heading to {self.ongoing_actions[i][-1]}'
+                # IDEL
+                if (type(actions[i]) is str) and (actions[i] == 'IDLE'):
+                    reaction_str[i] = f'agent{i+1} is not doing anything.'
             else:
                 self.ongoing_actions[i] = None
 
@@ -975,7 +995,7 @@ if __name__=="__main__":
             "renderInstanceSegmentation" : True,
             'renderDepthImage' : True,
             'gridSize': 0.25,
-            'agentCount' : 3},
+            'agentCount' : 2},
     }
 
     env = ThorMultiEnv(config_dict)
@@ -990,14 +1010,6 @@ if __name__=="__main__":
         act_str = f'agent1 : {act[0]} , agent2 : {act[1]}'
         env.step(act_str, to_print=True)'''
 
-    action_str = """agent1 : goto sink1,agent2 : goto countertop1"""
-    env.step(action_str, to_print=True)
-    action_str = """agent1 : take the lettuce"""
-    env.step(action_str, to_print=True)
-    action_str = """agent1 : put the lettuce on the sink1,agent2 : goto fridge1"""
-    env.step(action_str, to_print=True)
-    action_str = """agent2 : goto fridge1"""
-    env.step(action_str, to_print=True)
-    action_str = """agent2 : open fridge1"""
+    action_str = """agent1 : goto drawer2, agent2 : open drawer3"""
     env.step(action_str, to_print=True)
     time.sleep(5)

@@ -17,7 +17,7 @@ class PicknPlace(ThorMultiEnv):
         """
         Move the object as expected.
         """
-        pass 
+        list(picknplace_config.keys())
     
     def get_reward(self) -> int:
         """
