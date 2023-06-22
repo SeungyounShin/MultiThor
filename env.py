@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import math,os,time
 import random,re
 from tqdm import tqdm
-import json 
+import json,copy
 from collections import Counter,defaultdict
 
 from utils.multiagent_path_finding import MAPF
@@ -579,6 +579,17 @@ class ThorMultiEnv():
 
         return recep_node_mapping
 
+    def delete_node(self,graph, node):
+        if node in graph:
+            del graph[node]  # Delete the node from dictionary keys
+
+        # Delete the node from dictionary values (i.e., from lists of connected nodes)
+        for key in graph.keys():
+            if node in graph[key]:
+                graph[key].remove(node)
+                
+        return graph
+
     def nav_plan_to_pair(self, path):
         pairs = []
         if len(path) ==1:
@@ -846,7 +857,23 @@ class ThorMultiEnv():
                     agent_nodes_list.append(list(agent_nodes.values())[enum_i])
                     recep_nodes_list.append(v)
             if len(agent_nodes_list)>0:
-                min_nav_len,multiagent_path_solution = MAPF(self.G_dict,agent_nodes_list,recep_nodes_list)
+                # add all agent that is not a nav-agent (collision avoidance)
+                
+                '''for agent_i in range(self.agent_num):
+                    if agent_i not in nav_agents:
+                        agent_node_on_Graph = list(self.match_agent_node([agent_i]).values())[0]
+                        agent_nodes_list.append(agent_node_on_Graph)
+                        recep_nodes_list.append(agent_node_on_Graph)
+                        occupied[agent_i] = True'''
+                
+                g_copy = copy.deepcopy(self.G_dict)
+                for agent_i in range(self.agent_num):
+                    if agent_i not in nav_agents:
+                        agent_node_on_Graph = list(self.match_agent_node([agent_i]).values())[0] # e.g '21'
+                        g_copy = self.delete_node(g_copy, agent_node_on_Graph)
+
+                min_nav_len,multiagent_path_solution = MAPF(g_copy,agent_nodes_list,recep_nodes_list)
+                #print(multiagent_path_solution)
         for ni,na in enumerate(nav_agents):
             if not nav_error_agent[ni]:
                 action_plan[na] = self.nav_plan_to_pair(multiagent_path_solution[ni])
@@ -902,7 +929,7 @@ class ThorMultiEnv():
                                 reaction_str[agent_id] = f'agent{agent_id+1} arrived at {actions[agent_id][-1]}. On the {actions[agent_id][-1]}, {goto_observation_objs}' # TODO : tell more about what it see
                             else:
                                 # opennable 
-                                if recep_arrived_meta['isOpen']:\
+                                if recep_arrived_meta['isOpen']:
                                     # RECEP opened
                                     reaction_str[agent_id] = f'agent{agent_id+1} arrived at {actions[agent_id][-1]}.  The {actions[agent_id][-1]} is open. On it, {goto_observation_objs}'
                                 else:
@@ -951,8 +978,8 @@ class ThorMultiEnv():
 
         # reaction for idle agent 
         for agent_i in idle_agents:
-            if reaction_str[i] == '':
-                reaction_str[i] = f'agent{i+1} is not doing anything.'
+            if reaction_str[agent_i] == '':
+                reaction_str[agent_i] = f'agent{agent_i+1} is currently idle and not engaged in any activities or tasks.'
 
         #time.sleep(3)
         obs_str = ''
@@ -1030,7 +1057,7 @@ if __name__=="__main__":
             "renderInstanceSegmentation" : True,
             'renderDepthImage' : True,
             'gridSize': 0.25,
-            'agentCount' : 2},
+            'agentCount' : 5},
     }
 
     env = ThorMultiEnv(config_dict)
@@ -1045,6 +1072,6 @@ if __name__=="__main__":
         act_str = f'agent1 : {act[0]} , agent2 : {act[1]}'
         env.step(act_str, to_print=True)'''
 
-    action_str = """agent2 : open drawer1"""
+    action_str = """agent3 : goto sink1, agent2 : goto countertop2"""
     env.step(action_str, to_print=True)
     time.sleep(5)
