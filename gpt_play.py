@@ -23,7 +23,8 @@ if __name__ == "__main__":
 
     # setup env, agent, init_obs
     env = ThorMultiEnv(config_dict)
-    llm_agent = GPT4Agent(role_msg=GPT4_SYSTEM_PROMPT)
+    #llm_agent = GPT4Agent(role_msg=GPT4_SYSTEM_PROMPT)
+    llm_agent = GPT4Agent(role_msg=GPT4_SYSTEM_PROMPT_FULL_DEMO)
     init_obs = env.init_obs()
     MAX_STEPS = 15
     

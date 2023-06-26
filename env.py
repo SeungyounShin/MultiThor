@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import math,os,time
 import random,re
 from tqdm import tqdm
+import pandas as pd
 import json,copy
 from collections import Counter,defaultdict
 
@@ -168,6 +169,10 @@ class ThorMultiEnv():
 
     def get_metadata(self):
         pass
+
+    def getObjectStateFrame(self, agent_id=0):
+        df = pd.DataFrame(self.controller.last_event.events[agent_id].metadata['objects'])
+        return df
 
     def get_all_recepIds(self):
         recep_ids = list()
@@ -741,7 +746,7 @@ class ThorMultiEnv():
         # take 
         if act_name == 'take':
             obj_name = action_tuple[1].replace('the ','').strip()
-            return f'You pick up the {obj_name}.'
+            return f'agent{agent_id+1} pick up the {obj_name}.'
 
         elif act_name == 'put':
             # You put the {obj id} on the {recep id}.
@@ -749,24 +754,24 @@ class ThorMultiEnv():
             rest_parts = rest_parts.split(' ')
             obj_name = rest_parts[0].strip()
             recep = rest_parts[-1].strip()
-            return f'You put the {obj_name} on the {recep}.'
+            return f'agent{agent_id+1} put the {obj_name} on the {recep}.'
 
         # toggle
         elif act_name == 'toggle':
             if agent_last_event_meta['lastAction'] == 'ToggleObjectOn':
-                return f'You turn the {action_tuple[1]} on.'
+                return f'agent{agent_id+1} turn the {action_tuple[1]} on.'
             else:
-                return f'You turn the {action_tuple[1]} off.'
+                return f'agent{agent_id+1} turn the {action_tuple[1]} off.'
         
         elif act_name == 'open':
             #(a) You open the {recep id}. In it, you see a {obj1 id}, ... and a {objN id}.
             #(b) You open the {recep id}. The {recep id} is empty.
             goto_observation_objs = self.visible_object_template(agent_id)
-            return f'You open the {action_tuple[1]}. In it, {goto_observation_objs}.'
+            return f'agent{agent_id+1} open the {action_tuple[1]}. In it, {goto_observation_objs}.'
 
         elif act_name == 'close':
             # You close the {recep id}.
-            return f'You close the {action_tuple[1]}.'
+            return f'agent{agent_id+1} close the {action_tuple[1]}.'
             
     def step(self, actions, to_print=False):
         ################################################################
@@ -804,7 +809,7 @@ class ThorMultiEnv():
                 #    reaction_str[agent_i] = f"{agent_i+1} has ongoing action {self.ongoing_actions[agent_i]}"
             ## check actions invalid
             if actions[agent_i] == 'Invalid Action':
-                print("!!!!!!! ",actions,agent_i )
+                #print("!!!!!!! ",actions,agent_i )
                 reaction_str[agent_i] = f"{agent_i+1} commanded with Invalid Action."
             ## divide nav and interaction agents
             if actions[agent_i][0] =='goto':
@@ -831,11 +836,13 @@ class ThorMultiEnv():
         # (2) find recep node
         recep_nodes = self.match_recep_node(nav_recep_names)
         nav_error_agent = [False]*len(agent_nodes)
+        recep_nodes_nums = list()
         # some utils for nav (match agentId and recep_nodes)
         navAgent2node= dict()
         for enum_i,(recep_name_i,nav_agent_i) in enumerate(zip(nav_recep_names,nav_agents)):
             # get recep node at Graph(G)
             node_num = recep_nodes[recep_name_i]
+            recep_nodes_nums.append(node_num)
             if node_num is not None:
                 navAgent2node[nav_agent_i] = (node_num, recep_name_i)
             else: 
@@ -852,7 +859,8 @@ class ThorMultiEnv():
             # skip the errored nav agent
             agent_nodes_list = list()
             recep_nodes_list = list()
-            for enum_i,(k,v) in enumerate(recep_nodes.items()):
+
+            for enum_i,(k,v) in enumerate(zip(list(agent_nodes.values()),recep_nodes_nums)):
                 if v is not None: 
                     agent_nodes_list.append(list(agent_nodes.values())[enum_i])
                     recep_nodes_list.append(v)
@@ -874,9 +882,17 @@ class ThorMultiEnv():
 
                 min_nav_len,multiagent_path_solution = MAPF(g_copy,agent_nodes_list,recep_nodes_list)
                 #print(multiagent_path_solution)
+        
         for ni,na in enumerate(nav_agents):
             if not nav_error_agent[ni]:
-                action_plan[na] = self.nav_plan_to_pair(multiagent_path_solution[ni])
+                path_sol_i = multiagent_path_solution[ni]
+                if len(path_sol_i)==0:
+                    # which has no solution
+                    nav_agents.remove(na)
+                    #print(actions[na])
+                    reaction_str[na] = f'agent{na+1} is unable to access {actions[na][-1]} at the moment.'
+                else:
+                    action_plan[na] = self.nav_plan_to_pair(path_sol_i)
         
         # interaction
         for interact_agent_i in list(interact_action_dict.keys()):
@@ -900,7 +916,7 @@ class ThorMultiEnv():
             for agent_id in range(self.agent_num):
             
                 #### navigation action ####
-                
+
                 if agent_id in nav_agents:
                     nav_pair = action_plan[agent_id].pop(0)
                     # check final node 
@@ -944,7 +960,6 @@ class ThorMultiEnv():
 
                 if agent_id in list(interact_action_dict.keys()):
                     interaction_action_tuple = action_plan[agent_id][0]
-                    # [] TODO : embodied action
                     rtn_event = self.interact_step(interaction_action_tuple,agent_id) 
                     if type(rtn_event) == bool and not rtn_event:
                         # failed
@@ -1057,7 +1072,7 @@ if __name__=="__main__":
             "renderInstanceSegmentation" : True,
             'renderDepthImage' : True,
             'gridSize': 0.25,
-            'agentCount' : 5},
+            'agentCount' : 2},
     }
 
     env = ThorMultiEnv(config_dict)
@@ -1072,6 +1087,10 @@ if __name__=="__main__":
         act_str = f'agent1 : {act[0]} , agent2 : {act[1]}'
         env.step(act_str, to_print=True)'''
 
-    action_str = """agent3 : goto sink1, agent2 : goto countertop2"""
+    action_str = """agent1 : goto drawer4, agent2 : goto drawer4"""
     env.step(action_str, to_print=True)
+    action_str = """agent1 : open drawer4"""
+    env.step(action_str, to_print=True)
+    
+
     time.sleep(5)

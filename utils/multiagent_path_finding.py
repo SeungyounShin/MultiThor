@@ -31,9 +31,10 @@ def MAPF(graph, sources, targets):
         paths.append(new_path.copy()) # add a copy of new_path to paths
     
     # Check for collisions and make lower priority agents wait
-    max_len = max(map(len, paths))
+    max_len = min(map(len, paths))
     for t in range(max_len):
         positions = [path[t] if t < len(path) else path[-1] for path in paths]
+        #print(t, positions)
 
         for i, pos in enumerate(positions):
             if positions.count(pos) > 1:  # If there's a collision
