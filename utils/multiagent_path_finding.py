@@ -29,28 +29,34 @@ def MAPF(graph, sources, targets):
     for i in order:
         new_path = a_star_search(graph, sources[i], targets[i])
         paths.append(new_path.copy()) # add a copy of new_path to paths
-    
-    # Check for collisions and make lower priority agents wait
-    max_len = min(map(len, paths))
-    for t in range(max_len):
-        positions = [path[t] if t < len(path) else path[-1] for path in paths]
-        #print(t, positions)
 
-        for i, pos in enumerate(positions):
-            if positions.count(pos) > 1:  # If there's a collision
-                # agent priority (i)
-                high_priority = min([index for index, value in enumerate(positions) if value == pos]) # agents involved in this position 
-                if high_priority!=i:
-                    # Make the lower priority agent wait
-                    paths[i] = paths[i][:t] + [paths[i][t-1]] +  paths[i][t:]
+    reservations = {}
 
-    # Extend all paths to be of same length
-    max_len = max(map(len, paths))
-    min_len = min(map(len, paths))
-    #for path in paths:
-    #    path += [path[-1]] * (max_len - len(path))
+    change = True
+    while change:
+        change = False
+        max_len = max(map(len, paths))
+        for i, path in enumerate(paths):
+            for t in range(len(path)):
+                next_pos = path[t+1] if t+1 < len(path) else path[t]
+                if (t, path[t]) in reservations and reservations[(t, path[t])] != i:
+                    # current position is already reserved by another agent
+                    path.insert(t, path[t-1])  # wait
+                    change = True
+                elif (t, next_pos) in reservations and reservations[(t, next_pos)] != i:
+                    # next position is already reserved by another agent
+                    path.insert(t, path[t-1])  # wait
+                    change = True
+                else:
+                    # reserve current and next positions
+                    reservations[(t, path[t])] = i
+                    reservations[(t, next_pos)] = i
 
-    return min_len, paths
+    return max_len, paths
+
+
+   
+
 
 if __name__=="__main__":
     # Testing the function

@@ -1,5 +1,5 @@
 from ai2thor.controller import Controller
-import cv2 
+import cv2, imageio
 import networkx as nx
 import matplotlib.pyplot as plt
 import math,os,time
@@ -77,6 +77,9 @@ class ThorMultiEnv():
 
         # save actions
         self.ongoing_actions = [None] * self.agent_num
+
+        # for cv2 image saving
+        self.top_down_view_save_list = list()
 
         # cv2 window config
         window_offset=300
@@ -498,8 +501,15 @@ class ThorMultiEnv():
         #ego_centric_view = self.controller.last_event.frame
 
         # show 
-        cv2.imshow("top_down", cv2.cvtColor(new_frame, cv2.COLOR_BGR2RGB))
+        top_down_view = cv2.cvtColor(new_frame, cv2.COLOR_BGR2RGB)
+        self.top_down_view_save_list.append(new_frame)
+        cv2.imshow("top_down", top_down_view)
         cv2.waitKey(1)
+
+        #save gif
+        if len(self.top_down_view_save_list) > 0:
+            gif_path = f"save_results/traj.gif"
+            imageio.mimsave(gif_path, self.top_down_view_save_list, duration=0.1)
 
     def parse_actions(self,actions):
         actions = re.split(r"\n|,", actions)
@@ -627,6 +637,22 @@ class ThorMultiEnv():
 
         return e
     
+    def recep_name2id_wrapper(self, recep, agent_id=0):
+        # if  number in recep (e.g. countertop1, countertop2)
+        if recep in list(self.recep_name2id.keys()):
+            return self.recep_name2id[recep]
+
+        # if not then, get only visible recep 
+        visibleObjs =  self.get_visible_objectIds(agentId=agent_id)
+        for objId in visibleObjs:
+            objType_lower = objId.split("|")[0].lower()
+            recep_lower = recep.lower()
+            if (objType_lower==recep_lower) and (objId in list(self.recep_name2id.values())):
+                # matched recep name
+                return objId
+        
+        return None
+
     def interact_step(self, interaction_action_tuple, agent_id):
         action = interaction_action_tuple[0]
         obj = None
@@ -663,7 +689,8 @@ class ThorMultiEnv():
         # get recepId
         if recep is not None:
             try:
-                recep = self.recep_name2id[recep]
+                #recep = self.recep_name2id[recep]
+                recep = self.recep_name2id_wrapper(recep, agent_id=agent_id)
             except:
                 recep =None
 
@@ -700,7 +727,6 @@ class ThorMultiEnv():
             if obj_toggle_meta is None:
                 return False
             if obj_toggle_meta['isToggled']:
-                print('isToggled')
                 e = self.controller.step(
                     action="ToggleObjectOff",
                     objectId=obj,
@@ -799,14 +825,18 @@ class ThorMultiEnv():
         interact_agents, interact_actions = list() , list()
         interact_action_dict = dict()
         idle_agents = list()
+        ongoing_action_canceled = ['']*self.agent_num
         for agent_i in range(self.agent_num):
             ## check ongoing actions 
             if self.ongoing_actions[agent_i] is not None:
                 #print(f' ongoing ... {agent_i} {self.ongoing_actions[agent_i]}')
                 #reaction_str[agent_i] = f"{agent_i+1} has ongoing action {self.ongoing_actions[agent_i]}"
-                actions[agent_i] = self.ongoing_actions[agent_i]
-                #if self.actions[agent_i] is not None:
-                #    reaction_str[agent_i] = f"{agent_i+1} has ongoing action {self.ongoing_actions[agent_i]}"
+                if actions[agent_i] == 'IDLE':
+                    actions[agent_i] = self.ongoing_actions[agent_i]
+                elif actions[agent_i] is not None:
+                    # EXPERIMENTAL : has ongoing action but given new action -> canceled
+                    ongoing_action_canceled[agent_i] = f"agent{agent_i+1} has ongoing action {' '.join(self.ongoing_actions[agent_i])} are canceled and start new action {' '.join(actions[agent_i])}."
+                    self.ongoing_actions[agent_i] = None
             ## check actions invalid
             if actions[agent_i] == 'Invalid Action':
                 #print("!!!!!!! ",actions,agent_i )
@@ -1014,7 +1044,7 @@ class ThorMultiEnv():
             #print(self.ongoing_actions)
         else:
             for agent_i in range(self.agent_num):
-                obs_str += f'agent{agent_i+1} : {reaction_str[agent_i]}\n'
+                obs_str +=  f'agent{agent_i+1} : {ongoing_action_canceled[agent_i]} {reaction_str[agent_i]}\n'.replace('  ',' ')
 
         return obs_str
 
@@ -1022,7 +1052,6 @@ class ThorMultiEnv():
         obs = f"There are {self.agent_num} agents in the scene. You are instructed to finish \'{instruction}\'\n"
         recep_names = list(self.recep_name2id.keys())
         obs += self.getRecepString()
-
         return obs
 
     def agent_simulation_hand_tunend(self):
@@ -1068,7 +1097,8 @@ if __name__=="__main__":
 
     config_dict = {
         'controller_args':{
-            "scene": "FloorPlan1",
+            "local_executable_path":"/Users/seungyounshin/Desktop/RIL/Projects/ai2thor/unity/builds/thor-OSXIntel64-local/thor-OSXIntel64-local.app/Contents/MacOS/AI2-Thor",
+            "scene": "FloorPlan305",
             "renderInstanceSegmentation" : True,
             'renderDepthImage' : True,
             'gridSize': 0.25,
@@ -1087,10 +1117,8 @@ if __name__=="__main__":
         act_str = f'agent1 : {act[0]} , agent2 : {act[1]}'
         env.step(act_str, to_print=True)'''
 
-    action_str = """agent1 : goto drawer4, agent2 : goto drawer4"""
+    print(env.init_obs('hi'))
+    action_str = """agent1 : goto desk1"""
     env.step(action_str, to_print=True)
-    action_str = """agent1 : open drawer4"""
-    env.step(action_str, to_print=True)
-    
 
     time.sleep(5)

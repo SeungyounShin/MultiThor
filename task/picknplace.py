@@ -6,8 +6,8 @@ import time
 
 picknplace_config = {
     'PickTwoStatuePlaceDiningTable' : {
-        'instruction' : 'Pick two statue and place it on the diningtable.'
-        'scene' 
+        'instruction' : 'Pick two statue and place it on the diningtable.',
+        'scene' : 'FloorPlan3',
     }
 }
 

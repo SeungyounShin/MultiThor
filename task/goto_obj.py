@@ -6,7 +6,7 @@ import time
 
 findobj_config = {
     'FindEgg' : {
-        'instruction' : 'Find a dishsponge',
+        'instruction' : 'Go to a dishsponge',
         'scene' : 'FloorPlan5',
         'target_type' : 'DishSponge'
     }
