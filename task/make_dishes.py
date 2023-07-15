@@ -5,25 +5,26 @@ from env import ThorMultiEnv
 import time
 
 task_config = {
-    'FindEgg' : {
-        'instruction' : 'Place a cup of coffee and an apple on diningtable1.',
+    'MakeCoffeePlaceAppleAtDiningTable' : {
+        'instruction' : "Place a mug of coffee and an apple on diningtable1.",
         'scene' : 'FloorPlan7',
+        'num' : 1,
         'goal_conditions' : [
             {'Mug|+01.67|+00.90|-01.32' : {'isFilledWithLiquid' : True,
                                            'fillLiquid' : 'coffee',
                                            'parentReceptacles' :['DiningTable|-02.66|+00.00|+03.21'] }},
             {'Apple|-00.63|+00.96|-01.44' : {'parentReceptacles' : ['DiningTable|-02.66|+00.00|+03.21']}}
         ]
-    }
+    },
 }
 
 class MakeDishes(ThorMultiEnv):
 
-    def reset(self, num: str) -> None:
+    def reset(self, task_name: str) -> None:
         """
         Move the object as expected.
         """
-        self.config_key = list(task_config.keys())[num-1]
+        self.config_key = task_name
         self.config_dict = task_config[self.config_key]
         self.instruction = self.config_dict['instruction']
 
@@ -87,9 +88,11 @@ if __name__ == "__main__":
     }
 
     env = MakeDishes(config_dict)
-    env.reset(1)
+    env.reset('MakeCoffeePlaceAppleAtDiningTable')
 
-    '''print(env.init_obs('Make coffee'))
+    '''
+    # single agent
+    print(env.init_obs('Make coffee'))
     print(env.step('agent1 : goto countertop1'))
     print(env.step('agent1 : take mug'))
     print(env.step('agent1 : goto coffeemachine1'))
@@ -104,6 +107,8 @@ if __name__ == "__main__":
     print(env.step('agent1 : goto diningtable1'))
     print(env.step('agent1 : put apple on diningtable1'))'''
 
+    '''
+    #multi agent
     print(env.init_obs('Make coffee'))
     print(env.step('agent1 : goto countertop1, agent2 : goto countertop2'))
     print(env.step('agent1 : take mug'))
@@ -118,35 +123,16 @@ if __name__ == "__main__":
     print(env.step('agent1 : put mug on diningtable1'))
     print(env.step('agent1 : goto countertop2'))
     print(env.step('agent2 : put apple on diningtable1'))
-
     print(env.get_reward())
+    '''
 
+    # debug
+    print(env.step('agent2 : goto countertop1'))
+    print(env.step('agent2 : take mug'))
+    print(env.step('agent2 : goto coffeemachine1'))
+    print(env.step('agent2 : put mug on coffeemachine1'))
+    print(env.step('agent2 : toggle coffeemachine1'))
+    time.sleep(3)
 
-    '''llm_agent = GPT4Agent(role_msg=GPT4_SYSTEM_PROMPT)
-    #llm_agent = GPT4Agent(role_msg=GPT4_SYSTEM_PROMPT_FULL_DEMO)
-    init_obs = env.init_obs(instruction = env.instruction)
-    MAX_STEPS = 15
     
-    colorprint(init_obs, color='gray', font='bold')
-    act_type,content = llm_agent.act(init_obs)
-    colorprint(llm_agent.getLastAction(), color='green', font='bold')
-    obs = ''
-
-    for i in range(MAX_STEPS):
-
-        if act_type.lower() == 'think':
-            obs = 'Ok.'
-        
-        elif act_type.lower() == 'action':
-            obs = env.step(llm_agent.last_aciton)
-
-        # print results
-        print('Observation : ')
-        colorprint(obs, color='gray', font='bold')
-
-        act_type,content =  llm_agent.act(obs)
-        print('Action : ')
-        colorprint(llm_agent.getLastAction(), color='green', font='bold')
-
-        colorprint(f'Reward : {env.get_reward()}', color='orange', font='bold')'''
-
+    

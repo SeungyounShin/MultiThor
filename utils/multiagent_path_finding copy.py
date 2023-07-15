@@ -1,12 +1,20 @@
 import networkx as nx
 from heapq import heappop, heappush
 from collections import deque
+import math
 import time, random
 
-def heuristic(a, b):
+def node_heuristic(graph_all_info, a, b):
+    print(graph_all_info.nodes[a],graph_all_info.nodes[b])
     return abs(int(a) - int(b))
 
-def a_star_search(graph, start, goal):
+def heuristic(graph_all_info, a, b):
+    node_a = graph_all_info.nodes[a]
+    node_b = graph_all_info.nodes[b]
+    return math.sqrt((node_b['x'] - node_a['x'])**2  + (node_b['z'] - node_a['z'])**2)
+
+
+def a_star_search(graph_all_info, graph, start, goal):
     frontier = [(0, start, [])]
     explored = set()
 
@@ -19,15 +27,54 @@ def a_star_search(graph, start, goal):
         if current not in explored:
             explored.add(current)
             for neighbour in graph[current]:
-                heappush(frontier, (cost + 1 + heuristic(neighbour, goal), neighbour, path + [current]))
+                heappush(frontier, (cost + 1 + heuristic(graph_all_info, neighbour, goal), neighbour, path + [current]))
+        
+
+    '''if start == '50' and goal=='89':
+        import matplotlib.pyplot as plt 
+        color_map = []
+        for node in graph_all_info:
+            if node == start:
+                color_map.append('red')
+            elif node == goal: 
+                color_map.append('blue') 
+            else:
+                color_map.append('green')  # color other nodes in blue
+
+    
+        edge_colors = ['black' if (u,v) not in zip(path, path[1:]) and (v,u) not in zip(path, path[1:]) else 'red' for u,v in graph_all_info.edges()]
+        # Determine positions for each node
+        pos = {node: (data['x'], data['z']) for node, data in graph_all_info.nodes(data=True)}
+        # Draw nodes
+        nx.draw(graph_all_info, pos, node_color=color_map, with_labels=True)
+        # Draw edges
+        nx.draw_networkx_edges(graph_all_info, pos, edge_color=edge_colors)
+        plt.show()'''
 
     return []
 
-def MAPF(graph, sources, targets):
+def MAPF(graph_all_info, graph, sources, targets):
+
+    ## debug
+    '''if sources == ['50', '256']:
+        import matplotlib.pyplot as plt 
+        color_map = []
+        for node in graph_all_info:
+            if node in sources:
+                color_map.append('red')
+            elif node in targets: 
+                color_map.append('green') 
+            else:
+                color_map.append('blue')  # color other nodes in blue
+
+        pos = {node: (data['x'], data['z']) for node, data in graph_all_info.nodes(data=True)}
+        nx.draw(graph_all_info, pos, node_color=color_map, with_labels=True)
+        plt.show()'''
+
     order = list(range(len(sources)))  # simple ordering from 0 to n-1
     paths = []
     for i in order:
-        new_path = a_star_search(graph, sources[i], targets[i])
+        new_path = a_star_search(graph_all_info, graph, sources[i], targets[i])
         paths.append(new_path.copy()) # add a copy of new_path to paths
     
     # Check for collisions and make lower priority agents wait
@@ -51,6 +98,8 @@ def MAPF(graph, sources, targets):
     #    path += [path[-1]] * (max_len - len(path))
 
     return min_len, paths
+
+
 
 if __name__=="__main__":
     # Testing the function

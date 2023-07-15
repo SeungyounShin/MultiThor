@@ -14,6 +14,6 @@ def generate_neighbors(pos, step_size):
 
 def is_valid_transition(pos1, pos2, gridSize=0.25):
     threshold = math.sqrt(gridSize**2 + gridSize**2)
-    if (euclidean_distance(pos1, pos2) <= threshold):
+    if (euclidean_distance(pos1, pos2) < threshold):
         return True
     return False

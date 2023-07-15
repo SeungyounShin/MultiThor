@@ -30,6 +30,7 @@ class GPT4Query:
     def add_message(self, role, content):
         self.messages.append({"role": role, "content": content})
 
+    @retry(stop_max_attempt_number=5, wait_exponential_multiplier=1000, wait_exponential_max=10000)
     def query(self, user_input):
         self.add_message("user", user_input)
         self.response = openai.ChatCompletion.create(
@@ -57,6 +58,8 @@ class GPT4Agent(GPT4Query):
         
         self.last_aciton = None
 
+
+    @retry(stop_max_attempt_number=5, wait_exponential_multiplier=1000, wait_exponential_max=10000)
     def act(self, user_input):
         self.add_message("user", user_input)
         self.response = openai.ChatCompletion.create(
@@ -79,7 +82,7 @@ class GPT4Agent(GPT4Query):
 
         #print(tags)
         # delete duplicating agent
-        if tags[0]=='action':
+        if len(tags)>0 and tags[0]=='action':
             content_split = [i.strip() for i in content[0].split(',')]
             unique_commands = []
             seen_agents = set()
@@ -93,7 +96,9 @@ class GPT4Agent(GPT4Query):
             
             content_fixed = ', '.join(unique_commands)
             return tags[0], content_fixed
-    
+
+        if len(tags) + len(content) <2:
+            return 'Invalid Action', 'Invalid Action'          
         return tags[0], content[0]
 
     

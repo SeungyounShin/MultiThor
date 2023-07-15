@@ -24,6 +24,7 @@ class ThorMultiEnv():
         self.controller = Controller(**config_dict['controller_args'])
         self.agent_num= config_dict['controller_args']['agentCount']
         self.log = ''
+        self.steps=0
         
         # agent initial positions, rotations, horizons, and standing
         self.agent_init_meta = self.getAgentsMetadata()
@@ -46,6 +47,10 @@ class ThorMultiEnv():
             with open(f'./bestposes/{self.scene}.json', 'w') as f:
                 json.dump(self.best_recep_pose, f)
         self.recep_name2id, self.recepId2name = self.obj_mapping(list(self.best_recep_pose.keys()))
+        # recap preemption
+
+        recep_keys= list(self.recep_name2id.keys())
+        self.recep_occupied = {key: None for key in recep_keys}
 
         # Create a graph
         self.G = nx.Graph()
@@ -75,7 +80,9 @@ class ThorMultiEnv():
         #nx.draw_networkx_nodes(self.G, pos, node_color='r', node_size=200)
         #plt.show()
 
-        # save actions
+        # agent info save
+        self.agent_loc       = ["Middle of the Room"] * self.agent_num
+        self.agent_holding   = ["Nothing"] * self.agent_num
         self.ongoing_actions = [None] * self.agent_num
 
         # for cv2 image saving
@@ -93,6 +100,7 @@ class ThorMultiEnv():
 
         self.top_down_view_show()
         self.show_egocentric()
+
 
     def reset(self, reset_dict):
         # Code to reset the scene goes here
@@ -136,7 +144,10 @@ class ThorMultiEnv():
 
         # Constructing the sentence
         sentence_parts = []
+        RECEPTACLE_TYPE_LOWER = list(map(lambda x: x.lower(), RECEPTACLE_TYPE))
         for key, values in grouped_items.items():
+            if key.lower() not in RECEPTACLE_TYPE_LOWER:
+                continue
             if len(values) == 1:
                 sentence_parts.append(f"{key}{values[0]}")
             else:
@@ -396,94 +407,6 @@ class ThorMultiEnv():
         self.show_egocentric()
         return e
 
-    def goto_recep(self , recep_name, agent_id=0):
-        # get recep pos
-        recep_id = self.recep_name2id[recep_name]
-        recep_pos = self.getObjMetabyId(recep_id)['position']
-        # get agent pos
-        agent_pos = self.getAgentPosbyId(agent_id)
-        # get reachable pos
-        reachable_pos = self.getReachablePositions()
-        best_recep_closest_pos = self.best_recep_pose[recep_id]
-
-        # Create a graph
-        G = nx.Graph()
-
-        # Add nodes to the graph
-        G.add_node('agent', **agent_pos)
-        for rp_i, rp in enumerate(reachable_pos):
-            G.add_node(str(rp_i), **rp)
-        G.add_node('destination', **best_recep_closest_pos)
-
-        # Add edges to the graph
-        for node1 in G.nodes:
-            for node2 in G.nodes:
-                if node1 != node2:
-                    pos1 = G.nodes[node1]
-                    pos2 = G.nodes[node2]
-                    if is_valid_transition(pos1, pos2):
-                        weight = self.euclidean_distance(pos1, pos2)
-                        G.add_edge(node1, node2, weight=weight)
-
-        # Find the shortest path
-        shortest_path = nx.dijkstra_path(G, 'agent', 'destination')
-        pos = {node: (G.nodes[node]['x'], G.nodes[node]['z']) for node in G.nodes}
-        shortest_path_edges = [(shortest_path[i], shortest_path[i + 1]) for i in range(len(shortest_path) - 1)]
-
-        self.top_down_view_show()
-        self.show_egocentric()
-        for pair in shortest_path_edges:
-            now = G.nodes[pair[0]]
-            nxt = G.nodes[pair[1]]
-            
-            # check if destination node
-            if pair[1] == 'destination':
-                rotation = best_recep_closest_pos['rotation']
-            else:
-                rotation = self.get_rotation_from_two_points(now, nxt)
-
-            e = self.teleportfull({
-                'x': nxt['x'],
-                'y': nxt['y'],
-                'z': nxt['z'],
-                'rotation': rotation,
-                'horizon': nxt['horizon'] if 'horizon' in nxt else 0,
-                'standing': nxt['standing'] if 'standing' in nxt else True,
-            })
-
-            # top down vis
-            self.top_down_view_show()
-            self.show_egocentric()
-            #plt.imshow(self.controller.last_event.frame)
-            #plt.show()
-        
-        if e.metadata['lastActionSuccess']:
-            self.log += f'\ngoto {recep_name} success'
-        else:
-            self.log += f'\ngoto {recep_name} failed'
-            
-        '''# Draw the graph
-        plt.figure(figsize=(8, 8))
-        nx.draw(G, pos, node_color='b', with_labels=True, font_weight='bold')
-        nx.draw_networkx_nodes(G, pos, nodelist=['agent', 'destination'], node_color='r', node_size=200)
-
-        # Draw the shortest path
-        nx.draw_networkx_edges(G, pos, edgelist=shortest_path_edges, edge_color='r', width=2)
-        
-        plt.subplot(1, 2, 2)
-        # teleport to the best_recep_closest_pos
-        print(best_recep_closest_pos)
-        self.controller.step(action="TeleportFull", x=best_recep_closest_pos['x'], 
-                             y=best_recep_closest_pos['y'], 
-                             z=best_recep_closest_pos['z'], 
-                             rotation=best_recep_closest_pos['rotation'], 
-                             horizon=best_recep_closest_pos['horizon'],
-                            standing = best_recep_closest_pos['standing'] , agentId = agent_id)
-        # open the recep
-        plt.imshow(self.controller.last_event.events[agent_id].frame)
-        plt.show()'''
-        return e
-
     def stop(self):
         # Code to stop the simulation goes here
         pass
@@ -507,9 +430,12 @@ class ThorMultiEnv():
         cv2.waitKey(1)
 
         #save gif
-        if len(self.top_down_view_save_list) > 0:
+        if (len(self.top_down_view_save_list) > 0) and self.steps%10==0:
             gif_path = f"save_results/traj.gif"
             imageio.mimsave(gif_path, self.top_down_view_save_list, duration=0.1)
+
+    def agent_holding_str(self):
+        return [f'agent{i+1} is holding {obj}.' if obj != 'Nothing' else '' for i, obj in enumerate(self.agent_holding)]
 
     def parse_actions(self,actions):
         actions = re.split(r"\n|,", actions)
@@ -520,7 +446,7 @@ class ThorMultiEnv():
                 num = int(re.findall(r'\d+', agent)[0])-1
                 new_act[num] = action_str.strip()
             except:
-                new_act[num] = 'Invalide Action'
+                new_act[ith] = 'Invalide Action'
 
         actions = new_act
         
@@ -540,7 +466,7 @@ class ThorMultiEnv():
             except: 
                 _actions_.append('Invalid Action')
                 continue
-
+            
             if opcode not in ACTION_PRIMITIVE:
                 _actions_.append('Invalid Action')
                 continue 
@@ -654,6 +580,7 @@ class ThorMultiEnv():
         return None
 
     def interact_step(self, interaction_action_tuple, agent_id):
+
         action = interaction_action_tuple[0]
         obj = None
         recep = None
@@ -680,12 +607,20 @@ class ThorMultiEnv():
             rest_parts = rest_part.split(' ')
             obj = rest_parts[-1].strip()
 
+        def remove_non_alpha(s):
+            return re.sub(r'\d+', '', s)
+        
         # get objectId 
         if obj is not None:
-            visible_objectIds_i = self.get_visible_objectIds(agent_id)
-            gather_objId = list(filter(lambda visible_objId: obj.lower() in visible_objId.lower(), visible_objectIds_i))
-            if len(gather_objId) > 0:
-                obj = random.choice(gather_objId) # HARD-CODED
+            # obj can be receptable :: check if obj 'in' recepnames
+            obj_recep_ = self.recep_name2id_wrapper(obj, agent_id=agent_id)
+            if obj_recep_ is not None:
+                obj = obj_recep_
+            else:
+                visible_objectIds_i = self.get_visible_objectIds(agent_id)
+                gather_objId = list(filter(lambda visible_objId: obj.lower() in visible_objId.lower(), visible_objectIds_i))
+                if len(gather_objId) > 0:
+                    obj = random.choice(gather_objId) # HARD-CODED
         # get recepId
         if recep is not None:
             try:
@@ -772,6 +707,7 @@ class ThorMultiEnv():
         # take 
         if act_name == 'take':
             obj_name = action_tuple[1].replace('the ','').strip()
+            self.agent_holding[agent_id] = obj_name
             return f'agent{agent_id+1} pick up the {obj_name}.'
 
         elif act_name == 'put':
@@ -780,6 +716,7 @@ class ThorMultiEnv():
             rest_parts = rest_parts.split(' ')
             obj_name = rest_parts[0].strip()
             recep = rest_parts[-1].strip()
+            self.agent_holding[agent_id] = 'Nothing'
             return f'agent{agent_id+1} put the {obj_name} on the {recep}.'
 
         # toggle
@@ -834,13 +771,25 @@ class ThorMultiEnv():
                 if actions[agent_i] == 'IDLE':
                     actions[agent_i] = self.ongoing_actions[agent_i]
                 elif actions[agent_i] is not None:
+                    # check if given same action
+                    if self.ongoing_actions[agent_i] == actions[agent_i]:
+                        pass
                     # EXPERIMENTAL : has ongoing action but given new action -> canceled
-                    ongoing_action_canceled[agent_i] = f"agent{agent_i+1} has ongoing action {' '.join(self.ongoing_actions[agent_i])} are canceled and start new action {' '.join(actions[agent_i])}."
+                    elif actions[agent_i][0]!='goto' and self.ongoing_actions[agent_i][0]=='goto':
+                        # navigationg 
+                        if actions[agent_i]=='Invalid Action':
+                            ongoing_action_canceled[agent_i] = f"agent{agent_i+1} has ongoing action {' '.join(self.ongoing_actions[agent_i])}. Since, You commaned with Invalid action, I will proceed to go to {self.ongoing_actions[agent_i][-1]}."
+                        else:
+                            ongoing_action_canceled[agent_i] = f"agent{agent_i+1} has ongoing action {' '.join(self.ongoing_actions[agent_i])}. You can't {' '.join(actions[agent_i])} while going to {self.ongoing_actions[agent_i][-1]}."
+                        actions[agent_i] = self.ongoing_actions[agent_i]
+                    else:
+                        ongoing_action_canceled[agent_i] = f"agent{agent_i+1} has ongoing action {' '.join(self.ongoing_actions[agent_i])} are canceled and start new action {' '.join(actions[agent_i])}."
+                        #actions[agent_i] = self.ongoing_actions[agent_i]
                     self.ongoing_actions[agent_i] = None
             ## check actions invalid
             if actions[agent_i] == 'Invalid Action':
                 #print("!!!!!!! ",actions,agent_i )
-                reaction_str[agent_i] = f"{agent_i+1} commanded with Invalid Action."
+                reaction_str[agent_i] = f"agent{agent_i+1} commanded with Invalid Action."
             ## divide nav and interaction agents
             if actions[agent_i][0] =='goto':
                 # nav agent
@@ -865,7 +814,7 @@ class ThorMultiEnv():
         agent_nodes = self.match_agent_node(nav_agents)
         # (2) find recep node
         recep_nodes = self.match_recep_node(nav_recep_names)
-        nav_error_agent = [False]*len(agent_nodes)
+        nav_error_agent = [False]*self.agent_num#len(agent_nodes)
         recep_nodes_nums = list()
         # some utils for nav (match agentId and recep_nodes)
         navAgent2node= dict()
@@ -877,10 +826,13 @@ class ThorMultiEnv():
                 navAgent2node[nav_agent_i] = (node_num, recep_name_i)
             else: 
                 reaction_str[nav_agent_i] = f'There is no receptacles named {recep_name_i}'
-                nav_error_agent[enum_i] = True
+                nav_error_agent[nav_agent_i] = True
                 idle_agents.append(nav_agent_i)
         
-        nav_agents = [agent for i, agent in enumerate(nav_agents) if not nav_error_agent[i]]
+        nav_agents_copy = copy.deepcopy(nav_agents)
+        #nav_agents = [agent for i, agent in enumerate(nav_agents) if not nav_error_agent[i]]
+        nav_agents = [agent_i for i,agent_i in enumerate(nav_agents) if (not nav_error_agent[agent_i]) and (agent_i in nav_agents_copy)]
+        
 
         # (3) MAPF (Multi-Agent Path Finding)
         min_nav_len, multiagent_path_solution = 0,0
@@ -904,17 +856,34 @@ class ThorMultiEnv():
                         recep_nodes_list.append(agent_node_on_Graph)
                         occupied[agent_i] = True'''
                 
-                g_copy = copy.deepcopy(self.G_dict)
+                g_origin_copy,g_copy = copy.deepcopy(self.G),copy.deepcopy(self.G_dict)
                 for agent_i in range(self.agent_num):
                     if agent_i not in nav_agents:
                         agent_node_on_Graph = list(self.match_agent_node([agent_i]).values())[0] # e.g '21'
                         g_copy = self.delete_node(g_copy, agent_node_on_Graph)
+                
+                        # SPECIAL CASE :: nav_agent goal is same with deleted one
+                        special_case_agent_j,special_case_j = None , None
+                        for j,agent_j in enumerate(nav_agents):
+                            goal_node_num_j=recep_nodes_list[j]
+                            if goal_node_num_j == agent_node_on_Graph:
+                                # goal node is same with delted one.
 
-                min_nav_len,multiagent_path_solution = MAPF(g_copy,agent_nodes_list,recep_nodes_list)
-                #print(multiagent_path_solution)
+                                reaction_str[agent_j] = f"agent{agent_j+1} can't reach {actions[agent_j][-1]} currently because agent{agent_i+1} is occupying it."
+                                nav_error_agent[agent_j] = True 
+                                special_case_agent_j = agent_j
+                                special_case_j = j
+
+                        if special_case_agent_j is not None:
+                            nav_agents.remove(special_case_agent_j)
+                            agent_nodes_list.pop(special_case_j)
+                            recep_nodes_list.pop(special_case_j)
+
+            if len(agent_nodes_list)>0:
+                min_nav_len,multiagent_path_solution = MAPF(g_origin_copy,g_copy,agent_nodes_list,recep_nodes_list)
         
         for ni,na in enumerate(nav_agents):
-            if not nav_error_agent[ni]:
+            if not nav_error_agent[na]:
                 path_sol_i = multiagent_path_solution[ni]
                 if len(path_sol_i)==0:
                     # which has no solution
@@ -970,6 +939,7 @@ class ThorMultiEnv():
                             # check it's opennable 
                             recep_arrived_meta = self.getObjMetabyId(arrived_recep_id)
                             goto_observation_objs = self.visible_object_template(agent_id)
+                            self.agent_loc[agent_id] = navAgent2node[agent_id][1]
                             if not recep_arrived_meta['openable']:
                                 # general case : not opennable (ex : countertop)
                                 reaction_str[agent_id] = f'agent{agent_id+1} arrived at {actions[agent_id][-1]}. On the {actions[agent_id][-1]}, {goto_observation_objs}' # TODO : tell more about what it see
@@ -1000,13 +970,14 @@ class ThorMultiEnv():
                             reaction_str[agent_id] = self.interaction_obs_template(agent_id, interaction_action_tuple, rtn_event.metadata)
                         else:
                             full_iteraction_action_str = ' '.join(interaction_action_tuple)
-                            reaction_str[agent_id] = f'Agent{agent_id+1} failed to execute the operation "{full_iteraction_action_str}".'
+                            reaction_str[agent_id] = f'agent{agent_id+1} failed to execute the operation "{full_iteraction_action_str}".'
                             #reaction_str[agent_id] = f'agent{agent_id+1} failed to operate \'{full_iteraction_action_str}\''
                     agent_who_done[interact_agent_i] = True 
 
             # visualize
             self.top_down_view_show()
             self.show_egocentric()
+            self.steps += 1
 
         # keep ongoing action for next step 
         for i in range(self.agent_num):
@@ -1024,7 +995,7 @@ class ThorMultiEnv():
         # reaction for idle agent 
         for agent_i in idle_agents:
             if reaction_str[agent_i] == '':
-                reaction_str[agent_i] = f'agent{agent_i+1} is currently idle and not engaged in any activities or tasks.'
+                reaction_str[agent_i] = f'agent{agent_i+1} is currently located at {self.agent_loc[agent_i]} and and not engaged in any activities or tasks.'
 
         #time.sleep(3)
         obs_str = ''
@@ -1043,8 +1014,9 @@ class ThorMultiEnv():
             #print(reaction_str)
             #print(self.ongoing_actions)
         else:
+            holding_str = self.agent_holding_str()
             for agent_i in range(self.agent_num):
-                obs_str +=  f'agent{agent_i+1} : {ongoing_action_canceled[agent_i]} {reaction_str[agent_i]}\n'.replace('  ',' ')
+                obs_str +=  f'agent{agent_i+1} : {holding_str[agent_i]}{ongoing_action_canceled[agent_i]} {reaction_str[agent_i]}\n'.replace('  ',' ')
 
         return obs_str
 
@@ -1054,55 +1026,16 @@ class ThorMultiEnv():
         obs += self.getRecepString()
         return obs
 
-    def agent_simulation_hand_tunend(self):
-        # floorplan 1
-
-        command = {
-            0: 'goto countertop1', 
-            1: 'goto countertop2',
-        }
-
-        self.action_queue = {
-            0: [],
-            1: [],
-        }
-
-        agent_0_act_to_go = self.generate_nav_actions_by_recep(0 , 'sink1')
-
-
-        min_len = min(len(queue) for _, queue in self.action_queue.items() if queue)
-        print(f'min_len = {min_len}')
-
-        t = 0 
-        self.top_down_view_show()
-
-        for t_local in range(min_len):
-            
-            print(f't = {t_local}')
-            for agent_id, action_queue in self.action_queue.items():
-                if action_queue:
-                    next_action = action_queue[0]
-                    event = self.controller.step(next_action, agentId=agent_id)
-                    # print success
-                    success_flag = event.metadata["lastActionSuccess"]
-                    print(event.metadata['lastActionSuccess'])
-                    print("====")
-                    if success_flag:
-                        action_queue.pop(0)
-            
-            self.top_down_view_show()
-            t += 1
-
 if __name__=="__main__":
 
     config_dict = {
         'controller_args':{
             "local_executable_path":"/Users/seungyounshin/Desktop/RIL/Projects/ai2thor/unity/builds/thor-OSXIntel64-local/thor-OSXIntel64-local.app/Contents/MacOS/AI2-Thor",
-            "scene": "FloorPlan305",
+            "scene": "FloorPlan7",
             "renderInstanceSegmentation" : True,
             'renderDepthImage' : True,
             'gridSize': 0.25,
-            'agentCount' : 2},
+            'agentCount' : 3},
     }
 
     env = ThorMultiEnv(config_dict)
@@ -1118,7 +1051,12 @@ if __name__=="__main__":
         env.step(act_str, to_print=True)'''
 
     print(env.init_obs('hi'))
-    action_str = """agent1 : goto desk1"""
-    env.step(action_str, to_print=True)
+    print(env.step('agent1 : goto countertop1, agent2 : goto fridge1, agent3 : goto coffeemachine1', to_print=True))
+    print(env.step('agent1 : take mug, agent2 : goto fridge1, agent3 : goto coffeemachine1', to_print=True))
+    print(env.step('agent3 : goto coffeemachine1', to_print=True))
+    print(env.step('agent3 : take apple', to_print=True))
+    print(env.agent_holding_str())
+    #print(env.step('agent2 : goto fridge1, agent3 : goto coffeemachine1', to_print=True))
+    #print(env.step('agent2 : open fridge1, agent3 : goto mug', to_print=True))
 
     time.sleep(5)
